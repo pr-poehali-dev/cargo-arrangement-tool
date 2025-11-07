@@ -8,6 +8,24 @@ import { Button } from "@/components/ui/button";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import Icon from "@/components/ui/icon";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Container3DView } from "@/components/Container3DView";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 const containerTypes = [
   { id: "20ft", name: "20' стандартный", length: 5.9, width: 2.35, height: 2.39, capacity: 33.2, maxWeight: 21700, category: "Стандартные" },
@@ -45,7 +63,166 @@ interface CargoItem {
   height: number;
   weight: number;
   quantity: number;
+  color?: string;
 }
+
+const cargoColors = [
+  "#3a8dd8",
+  "#2d7a1f",
+  "#e67e22",
+  "#9b59b6",
+  "#e74c3c",
+  "#1abc9c",
+  "#f39c12",
+  "#34495e",
+];
+
+const SortableCargoItem = ({
+  item,
+  index,
+  onUpdate,
+  onRemove,
+  canRemove,
+}: {
+  item: CargoItem;
+  index: number;
+  onUpdate: (updates: Partial<CargoItem>) => void;
+  onRemove: () => void;
+  canRemove: boolean;
+}) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: item.id,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <Card
+      ref={setNodeRef}
+      style={style}
+      className="border-2 border-[#3a8dd8]/30 relative"
+    >
+      <CardContent className="pt-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div
+              {...attributes}
+              {...listeners}
+              className="cursor-move p-2 hover:bg-slate-100 rounded"
+            >
+              <Icon name="GripVertical" size={20} className="text-[#3a8dd8]" />
+            </div>
+            <div className="flex items-center gap-2">
+              <div
+                className="w-4 h-4 rounded"
+                style={{ backgroundColor: item.color }}
+              />
+              <Label className="text-[#1a3a5c] font-medium">
+                Груз #{index + 1} ({item.weight}кг)
+              </Label>
+            </div>
+          </div>
+          {canRemove && (
+            <Button
+              onClick={onRemove}
+              variant="ghost"
+              size="sm"
+              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+            >
+              <Icon name="Trash2" size={16} />
+            </Button>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label className="text-[#1a3a5c] text-sm">Тип грузовой единицы</Label>
+          <Select
+            value={item.unitType.id}
+            onValueChange={(value) => {
+              const unit = cargoUnits.find((u) => u.id === value);
+              if (unit) {
+                onUpdate({
+                  unitType: unit,
+                  length: unit.id !== "custom" ? unit.length : item.length,
+                  width: unit.id !== "custom" ? unit.width : item.width,
+                  height: unit.id !== "custom" ? unit.height : item.height,
+                  weight: unit.id !== "custom" ? unit.weight : item.weight,
+                });
+              }
+            }}
+          >
+            <SelectTrigger className="bg-white border-[#3a8dd8]/30">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {cargoUnits.map((unit) => (
+                <SelectItem key={unit.id} value={unit.id}>
+                  {unit.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="grid grid-cols-4 gap-3">
+          <div className="space-y-2">
+            <Label className="text-[#1a3a5c] text-xs">Длина (м)</Label>
+            <Input
+              type="number"
+              step="0.1"
+              value={item.length}
+              onChange={(e) => onUpdate({ length: parseFloat(e.target.value) || 0 })}
+              className="bg-white border-[#3a8dd8]/30 h-9"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-[#1a3a5c] text-xs">Ширина (м)</Label>
+            <Input
+              type="number"
+              step="0.1"
+              value={item.width}
+              onChange={(e) => onUpdate({ width: parseFloat(e.target.value) || 0 })}
+              className="bg-white border-[#3a8dd8]/30 h-9"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-[#1a3a5c] text-xs">Высота (м)</Label>
+            <Input
+              type="number"
+              step="0.1"
+              value={item.height}
+              onChange={(e) => onUpdate({ height: parseFloat(e.target.value) || 0 })}
+              className="bg-white border-[#3a8dd8]/30 h-9"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-[#1a3a5c] text-xs">Вес (кг)</Label>
+            <Input
+              type="number"
+              value={item.weight}
+              onChange={(e) => onUpdate({ weight: parseFloat(e.target.value) || 0 })}
+              className="bg-white border-[#3a8dd8]/30 h-9"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label className="text-[#1a3a5c] text-sm">Количество</Label>
+          <Input
+            type="number"
+            value={item.quantity}
+            onChange={(e) => onUpdate({ quantity: parseInt(e.target.value) || 1 })}
+            className="bg-white border-[#3a8dd8]/30"
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
 
 const Index = () => {
   const [selectedContainer, setSelectedContainer] = useState(containerTypes[0]);
@@ -58,9 +235,30 @@ const Index = () => {
       height: cargoUnits[0].height,
       weight: cargoUnits[0].weight,
       quantity: 1,
+      color: cargoColors[0],
     },
   ]);
   const [calculated, setCalculated] = useState(false);
+  const [show3DView, setShow3DView] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      setCargoItems((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id);
+        const newIndex = items.findIndex((item) => item.id === over.id);
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
+  };
 
   const addCargoItem = () => {
     setCargoItems([
@@ -73,6 +271,7 @@ const Index = () => {
         height: cargoUnits[0].height,
         weight: cargoUnits[0].weight,
         quantity: 1,
+        color: cargoColors[cargoItems.length % cargoColors.length],
       },
     ]);
   };
@@ -239,7 +438,7 @@ const Index = () => {
                           <Icon name="Package" size={24} className="text-[#3a8dd8]" />
                           Грузовые единицы
                         </CardTitle>
-                        <CardDescription>Добавьте различные типы груза</CardDescription>
+                        <CardDescription>Перетаскивайте для изменения порядка размещения (тяжелый груз снизу)</CardDescription>
                       </div>
                       <Button
                         onClick={addCargoItem}
@@ -252,132 +451,98 @@ const Index = () => {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {cargoItems.map((item, index) => (
-                      <Card key={item.id} className="border-2 border-[#3a8dd8]/30">
-                        <CardContent className="pt-6 space-y-4">
-                          <div className="flex items-center justify-between">
-                            <Label className="text-[#1a3a5c] font-medium">
-                              Груз #{index + 1}
-                            </Label>
-                            {cargoItems.length > 1 && (
-                              <Button
-                                onClick={() => removeCargoItem(item.id)}
-                                variant="ghost"
-                                size="sm"
-                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                              >
-                                <Icon name="Trash2" size={16} />
-                              </Button>
-                            )}
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label className="text-[#1a3a5c] text-sm">Тип грузовой единицы</Label>
-                            <Select
-                              value={item.unitType.id}
-                              onValueChange={(value) => {
-                                const unit = cargoUnits.find((u) => u.id === value);
-                                if (unit) {
-                                  updateCargoItem(item.id, {
-                                    unitType: unit,
-                                    length: unit.id !== "custom" ? unit.length : item.length,
-                                    width: unit.id !== "custom" ? unit.width : item.width,
-                                    height: unit.id !== "custom" ? unit.height : item.height,
-                                    weight: unit.id !== "custom" ? unit.weight : item.weight,
-                                  });
-                                }
-                              }}
-                            >
-                              <SelectTrigger className="bg-white border-[#3a8dd8]/30">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {cargoUnits.map((unit) => (
-                                  <SelectItem key={unit.id} value={unit.id}>
-                                    {unit.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          <div className="grid grid-cols-4 gap-3">
-                            <div className="space-y-2">
-                              <Label className="text-[#1a3a5c] text-xs">Длина (м)</Label>
-                              <Input
-                                type="number"
-                                step="0.1"
-                                value={item.length}
-                                onChange={(e) =>
-                                  updateCargoItem(item.id, { length: parseFloat(e.target.value) || 0 })
-                                }
-                                className="bg-white border-[#3a8dd8]/30 h-9"
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label className="text-[#1a3a5c] text-xs">Ширина (м)</Label>
-                              <Input
-                                type="number"
-                                step="0.1"
-                                value={item.width}
-                                onChange={(e) =>
-                                  updateCargoItem(item.id, { width: parseFloat(e.target.value) || 0 })
-                                }
-                                className="bg-white border-[#3a8dd8]/30 h-9"
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label className="text-[#1a3a5c] text-xs">Высота (м)</Label>
-                              <Input
-                                type="number"
-                                step="0.1"
-                                value={item.height}
-                                onChange={(e) =>
-                                  updateCargoItem(item.id, { height: parseFloat(e.target.value) || 0 })
-                                }
-                                className="bg-white border-[#3a8dd8]/30 h-9"
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label className="text-[#1a3a5c] text-xs">Вес (кг)</Label>
-                              <Input
-                                type="number"
-                                value={item.weight}
-                                onChange={(e) =>
-                                  updateCargoItem(item.id, { weight: parseFloat(e.target.value) || 0 })
-                                }
-                                className="bg-white border-[#3a8dd8]/30 h-9"
-                              />
-                            </div>
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label className="text-[#1a3a5c] text-sm">
-                              Количество (макс: {calculateMaxUnits(item)})
-                            </Label>
-                            <Input
-                              type="number"
-                              value={item.quantity}
-                              onChange={(e) =>
-                                updateCargoItem(item.id, { quantity: parseInt(e.target.value) || 1 })
-                              }
-                              className="bg-white border-[#3a8dd8]/30"
-                            />
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-
-                    <Button
-                      onClick={calculate}
-                      className="w-full bg-[#2d7a1f] hover:bg-[#2d7a1f]/90 text-white font-medium"
-                      size="lg"
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={handleDragEnd}
                     >
-                      <Icon name="Calculator" size={20} className="mr-2" />
-                      Рассчитать размещение
-                    </Button>
+                      <SortableContext
+                        items={cargoItems.map((item) => item.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        {cargoItems.map((item, index) => (
+                          <SortableCargoItem
+                            key={item.id}
+                            item={item}
+                            index={index}
+                            onUpdate={(updates) => updateCargoItem(item.id, updates)}
+                            onRemove={() => removeCargoItem(item.id)}
+                            canRemove={cargoItems.length > 1}
+                          />
+                        ))}
+                      </SortableContext>
+                    </DndContext>
+
+                    <Alert className="bg-[#2d7a1f]/10 border-[#2d7a1f]/30">
+                      <Icon name="Info" size={18} className="text-[#2d7a1f]" />
+                      <AlertDescription className="text-[#1a3a5c]">
+                        Грузы автоматически размещаются по весу: тяжелые снизу, легкие сверху. Изменить порядок можно перетаскиванием.
+                      </AlertDescription>
+                    </Alert>
+
+                    <div className="flex gap-3">
+                      <Button
+                        onClick={() => {
+                          const sorted = [...cargoItems].sort((a, b) => b.weight - a.weight);
+                          setCargoItems(sorted);
+                        }}
+                        variant="outline"
+                        className="flex-1 border-[#3a8dd8] text-[#3a8dd8] hover:bg-[#3a8dd8]/10"
+                        size="lg"
+                      >
+                        <Icon name="ArrowDownWideNarrow" size={20} className="mr-2" />
+                        Сортировать по весу
+                      </Button>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <Button
+                        onClick={calculate}
+                        className="flex-1 bg-[#2d7a1f] hover:bg-[#2d7a1f]/90 text-white font-medium"
+                        size="lg"
+                      >
+                        <Icon name="Calculator" size={20} className="mr-2" />
+                        Рассчитать
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          setCalculated(true);
+                          setShow3DView(true);
+                        }}
+                        className="flex-1 bg-[#3a8dd8] hover:bg-[#3a8dd8]/90 text-white font-medium"
+                        size="lg"
+                      >
+                        <Icon name="Box" size={20} className="mr-2" />
+                        3D Просмотр
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
+
+                {show3DView && calculated && (
+                  <Card className="bg-white/95 backdrop-blur">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-[#1a3a5c]">
+                        <Icon name="Box" size={24} className="text-[#3a8dd8]" />
+                        3D Визуализация размещения
+                      </CardTitle>
+                      <CardDescription>
+                        Вращайте мышью, зум колесиком, перемещение правой кнопкой
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <Container3DView
+                        containerLength={selectedContainer.length}
+                        containerWidth={selectedContainer.width}
+                        containerHeight={selectedContainer.height}
+                        cargoItems={cargoItems.map((item) => ({
+                          ...item,
+                          name: item.unitType.name,
+                        }))}
+                      />
+                    </CardContent>
+                  </Card>
+                )}
               </div>
 
               <div className="space-y-6">
